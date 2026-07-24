@@ -1,16 +1,84 @@
-﻿build/
+﻿# ---------------------------------
+# CMake build output
+# ---------------------------------
+build/
 out/
 cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+install_manifest.txt
+compile_commands.json
+_deps/
 
+# User-specific CMake settings
+CMakeUserPresets.json
+
+# ---------------------------------
+# Compiled C/C++ files
+# ---------------------------------
 *.exe
-*.obj
-*.o
-*.lib
 *.dll
-*.pdb
+*.so
+*.dylib
+*.o
+*.obj
+*.a
+*.lib
 
+# Microsoft compiler/debug files
+*.pdb
+*.ilk
+*.idb
+*.exp
+*.tlog
+*.lastbuildstate
+
+# ---------------------------------
+# Testing and coverage output
+# ---------------------------------
+Testing/
+test-results/
+coverage/
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+
+# ---------------------------------
+# Runtime-generated files
+# ---------------------------------
+*.log
+*.journal
+*.snapshot
+
+# ---------------------------------
+# Editors and IDEs
+# ---------------------------------
+.vs/
 .vscode/
 .idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.swp
+*.swo
 
-Thumbs.db
+# ---------------------------------
+# Operating-system files
+# ---------------------------------
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------
+# Temporary files
+# ---------------------------------
+*.tmp
+*.temp
+*.bak
+*~
