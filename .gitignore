@@ -1,0 +1,16 @@
+﻿build/
+out/
+cmake-build-*/
+
+*.exe
+*.obj
+*.o
+*.lib
+*.dll
+*.pdb
+
+.vscode/
+.idea/
+
+Thumbs.db
+.DS_Store
