@@ -23,7 +23,8 @@ namespace order_engine {
         private:
         std::map<Price, PriceLevel, std::greater<>> bid_map_; 
         std::map<Price, PriceLevel> ask_map_;
-        std::uint64_t next_sequence_{0};
+        std::uint64_t next_sequence_{0}; // Starts at zero 
+        std::uint64_t next_trade_id_{0};
 
         public:
         // Adds an order to the book. If it crosses the opposite side, matches are
