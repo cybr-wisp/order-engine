@@ -436,3 +436,74 @@ TEST(Benchmark, Latency) {
 
     std::cout << "\n";
 }
+
+// ========== Day 14: Trade log ==========
+
+TEST(TradeLog, EmptyBookHasEmptyLog) {
+    OrderBook book;
+    EXPECT_TRUE(book.getTradeLog().empty());
+}
+
+TEST(TradeLog, LogAccumulatesAcrossMultipleCalls) {
+    OrderBook book;
+
+    // First match
+    book.addOrder(makeOrder(1, Side::Sell, 100, 50));
+    book.addOrder(makeOrder(2, Side::Buy, 100, 50));
+
+    // Second match
+    book.addOrder(makeOrder(3, Side::Sell, 200, 30));
+    book.addOrder(makeOrder(4, Side::Buy, 200, 30));
+
+    const auto& log = book.getTradeLog();
+    ASSERT_EQ(log.size(), 2);
+
+    // First trade
+    EXPECT_EQ(log[0].buy_order_id, 2);
+    EXPECT_EQ(log[0].sell_order_id, 1);
+    EXPECT_EQ(log[0].price, 100);
+    EXPECT_EQ(log[0].quantity, 50);
+
+    // Second trade
+    EXPECT_EQ(log[1].buy_order_id, 4);
+    EXPECT_EQ(log[1].sell_order_id, 3);
+    EXPECT_EQ(log[1].price, 200);
+    EXPECT_EQ(log[1].quantity, 30);
+}
+
+TEST(TradeLog, TradeIdsAreMonotonic) {
+    OrderBook book;
+
+    book.addOrder(makeOrder(1, Side::Sell, 100, 30));
+    book.addOrder(makeOrder(2, Side::Sell, 101, 30));
+    book.addOrder(makeOrder(3, Side::Buy, 101, 60));
+
+    const auto& log = book.getTradeLog();
+    ASSERT_EQ(log.size(), 2);
+    EXPECT_LT(log[0].trade_id, log[1].trade_id);
+}
+
+TEST(TradeLog, TimestampsAreNonDecreasing) {
+    OrderBook book;
+
+    book.addOrder(makeOrder(1, Side::Sell, 100, 50));
+    book.addOrder(makeOrder(2, Side::Sell, 101, 50));
+    book.addOrder(makeOrder(3, Side::Buy, 101, 100));
+
+    const auto& log = book.getTradeLog();
+    ASSERT_EQ(log.size(), 2);
+    EXPECT_LE(log[0].timestamp, log[1].timestamp);
+}
+
+TEST(TradeLog, LogMatchesReturnedTrades) {
+    OrderBook book;
+
+    book.addOrder(makeOrder(1, Side::Sell, 100, 80));
+    auto trades = book.addOrder(makeOrder(2, Side::Buy, 100, 80));
+
+    const auto& log = book.getTradeLog();
+    ASSERT_EQ(log.size(), trades.size());
+    EXPECT_EQ(log[0].trade_id, trades[0].trade_id);
+    EXPECT_EQ(log[0].quantity, trades[0].quantity);
+    EXPECT_EQ(log[0].price, trades[0].price);
+}

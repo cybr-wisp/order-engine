@@ -42,6 +42,7 @@ namespace order_engine {
                 trade.timestamp = std::chrono::steady_clock::now();
 
                 trades.push_back(trade);
+                trade_log_.push_back(trade);
 
                 // Clean up: remove filled resting order, then empty level
                 if (resting.remaining_quantity == 0) {
@@ -81,7 +82,8 @@ namespace order_engine {
                 trade.quantity = fill_qty;
                 trade.timestamp = std::chrono::steady_clock::now();
 
-                trades.push_back(trade);       
+                trades.push_back(trade);      
+                trade_log_.push_back(trade); 
 
                 // Clean up: remove filled resting order, then empty level
                 if (resting.remaining_quantity == 0) {
@@ -209,6 +211,10 @@ namespace order_engine {
             return true;
 
 
+        }
+
+        const std::vector<Trade>& OrderBook::getTradeLog() const {
+            return trade_log_;
         }
 
     

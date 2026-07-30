@@ -27,6 +27,7 @@ namespace order_engine {
         std::map<Price, PriceLevel> ask_map_;
         std::uint64_t next_sequence_{0}; // Starts at zero 
         std::uint64_t next_trade_id_{0};
+        std::vector<Trade> trade_log_;
 
         // Maps each order ID to an iterator pointing to that order's location in the order list.
         std::unordered_map<OrderId, std::list<Order>::iterator> order_lookup_;
@@ -47,6 +48,8 @@ namespace order_engine {
 
         // Removes a resting order that hasn't been filled yet — a trader changes their mind and pulls the order out
         bool cancelOrder(OrderId id);
+
+        const std::vector<Trade>& getTradeLog() const;
 
         
     };
