@@ -33,7 +33,7 @@ TEST(Matching, ExactMatch_BuyMeetsSell) {
     // One trade produced
     ASSERT_EQ(trades2.size(), 1);
     EXPECT_EQ(trades2[0].quantity, 100);
-    EXPECT_EQ(trades2[0].price, 100);
+    EXPECT_EQ(trades2[0].price, 100);        // resting order's price
     EXPECT_EQ(trades2[0].buy_order_id, 2);
     EXPECT_EQ(trades2[0].sell_order_id, 1);
 
@@ -56,8 +56,8 @@ TEST(Matching, ExactMatch_SellMeetsBuy) {
     ASSERT_EQ(trades2.size(), 1);
     EXPECT_EQ(trades2[0].quantity, 50);
     EXPECT_EQ(trades2[0].price, 200);
-    EXPECT_EQ(trades2[0].buy_order_id, 1);
-    EXPECT_EQ(trades2[0].sell_order_id, 2);
+    EXPECT_EQ(trades2[0].buy_order_id, 1);   // resting buyer
+    EXPECT_EQ(trades2[0].sell_order_id, 2);   // incoming seller
 
     EXPECT_EQ(book.getBestBid(), std::nullopt);
     EXPECT_EQ(book.getBestAsk(), std::nullopt);
@@ -147,4 +147,98 @@ TEST(Matching, PartialFill_WalksThroughMultipleLevels) {
     auto snap = book.getSnapshot();
     ASSERT_EQ(snap.asks.size(), 1);
     EXPECT_EQ(snap.asks[0].total_quantity, 20);
+}
+
+// Helper — builds a market order (no price needed)
+static Order makeMarketOrder(OrderId id, Side side, Quantity qty) {
+    Order o;
+    o.id = id;
+    o.side = side;
+    o.type = OrderType::Market;
+    o.price = 0;  // irrelevant for market orders
+    o.initial_quantity = qty;
+    o.remaining_quantity = qty;
+    o.sequence_number = 0;
+    o.timestamp = std::chrono::steady_clock::now();
+    return o;
+}
+
+// ========== Day 12: Market orders ==========
+
+TEST(Matching, MarketBuy_SweepsThreeLevels) {
+    OrderBook book;
+
+    // Three sellers at different prices
+    book.addOrder(makeOrder(1, Side::Sell, 100, 30));
+    book.addOrder(makeOrder(2, Side::Sell, 101, 40));
+    book.addOrder(makeOrder(3, Side::Sell, 105, 50));
+
+    // Market buy for 80 — no price limit, eats cheapest first
+    auto trades = book.addOrder(makeMarketOrder(4, Side::Buy, 80));
+
+    // Sweeps: 30@100 + 40@101 + 10@105
+    ASSERT_EQ(trades.size(), 3);
+    EXPECT_EQ(trades[0].quantity, 30);
+    EXPECT_EQ(trades[0].price, 100);
+    EXPECT_EQ(trades[1].quantity, 40);
+    EXPECT_EQ(trades[1].price, 101);
+    EXPECT_EQ(trades[2].quantity, 10);
+    EXPECT_EQ(trades[2].price, 105);
+
+    // Buyer fully filled, seller at 105 has 40 left
+    EXPECT_EQ(book.getBestBid(), std::nullopt);
+    EXPECT_EQ(book.getBestAsk(), 105);
+    auto snap = book.getSnapshot();
+    ASSERT_EQ(snap.asks.size(), 1);
+    EXPECT_EQ(snap.asks[0].total_quantity, 40);
+}
+
+TEST(Matching, MarketSell_SweepsMultipleBids) {
+    OrderBook book;
+
+    // Two buyers resting
+    book.addOrder(makeOrder(1, Side::Buy, 50, 100));
+    book.addOrder(makeOrder(2, Side::Buy, 48, 60));
+
+    // Market sell for 120 — eats highest bid first
+    auto trades = book.addOrder(makeMarketOrder(3, Side::Sell, 120));
+
+    ASSERT_EQ(trades.size(), 2);
+    EXPECT_EQ(trades[0].quantity, 100);
+    EXPECT_EQ(trades[0].price, 50);
+    EXPECT_EQ(trades[1].quantity, 20);
+    EXPECT_EQ(trades[1].price, 48);
+
+    // Seller fully filled, buyer at 48 has 40 left
+    EXPECT_EQ(book.getBestAsk(), std::nullopt);
+    EXPECT_EQ(book.getBestBid(), 48);
+}
+
+TEST(Matching, MarketOrder_EmptyBook_NoTrades) {
+    OrderBook book;
+
+    // Market buy into empty book — nothing to match
+    auto trades = book.addOrder(makeMarketOrder(1, Side::Buy, 100));
+
+    EXPECT_TRUE(trades.empty());
+    // Market order does NOT rest on the book
+    EXPECT_EQ(book.getBestBid(), std::nullopt);
+    EXPECT_EQ(book.getBestAsk(), std::nullopt);
+}
+
+TEST(Matching, MarketOrder_InsufficientLiquidity_PartialFillNoRest) {
+    OrderBook book;
+
+    // Only 50 shares available
+    book.addOrder(makeOrder(1, Side::Sell, 100, 50));
+
+    // Market buy wants 200 — gets 50, remaining 150 is lost
+    auto trades = book.addOrder(makeMarketOrder(2, Side::Buy, 200));
+
+    ASSERT_EQ(trades.size(), 1);
+    EXPECT_EQ(trades[0].quantity, 50);
+
+    // Book is empty — market order did NOT rest
+    EXPECT_EQ(book.getBestBid(), std::nullopt);
+    EXPECT_EQ(book.getBestAsk(), std::nullopt);
 }

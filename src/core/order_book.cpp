@@ -6,8 +6,6 @@
 
 namespace order_engine {
 
-
-
     // Function ->  Adds an Order to the Bid or Ask Map and returns the match 
     std::vector<Trade> OrderBook::addOrder(Order order) {
         // Stamp arrival order — used to break ties at the same price (lower = earlier = fills first)
@@ -17,7 +15,7 @@ namespace order_engine {
 
         if (order.side == Side::Buy) {
 
-            while (order.remaining_quantity > 0 && !ask_map_.empty() && order.price >= ask_map_.begin()->first) {
+            while (order.remaining_quantity > 0 && !ask_map_.empty() && (order.type == OrderType::Market || order.price >= ask_map_.begin()->first)) {
                 // match against the asks, NOT Insert 
                 // The seller we are matching - the existing seller in the book 
                 Order& resting = ask_map_.begin()->second.orders.front();
@@ -55,7 +53,7 @@ namespace order_engine {
             }
 
         } else {
-            while(order.remaining_quantity > 0 && !bid_map_.empty() && order.price <= bid_map_.begin()->first) {
+            while(order.remaining_quantity > 0 && !bid_map_.empty() && (order.type == OrderType::Market || order.price <= bid_map_.begin()->first))  {
 
                 // match against the bids, NOT Insert 
                 // The buyer we are matching - the existing buyer (resting) in the book 
@@ -95,7 +93,7 @@ namespace order_engine {
         }
 
         // After the Trade - Fill the remaining 
-        if (order.remaining_quantity > 0 ) {
+        if (order.remaining_quantity > 0 && order.type == OrderType::Limit) {
             if (order.side == Side::Buy) {
                 bid_map_[order.price].orders.push_back(order);
             } else {
