@@ -242,3 +242,95 @@ TEST(Matching, MarketOrder_InsufficientLiquidity_PartialFillNoRest) {
     EXPECT_EQ(book.getBestBid(), std::nullopt);
     EXPECT_EQ(book.getBestAsk(), std::nullopt);
 }
+
+// ========== Day 13: Cancel by ID ==========
+
+TEST(Cancel, CancelRestingBuyOrder) {
+    OrderBook book;
+
+    // Buy rests on the book
+    book.addOrder(makeOrder(1, Side::Buy, 100, 50));
+    EXPECT_EQ(book.getBestBid(), 100);
+
+    // Cancel it
+    EXPECT_TRUE(book.cancelOrder(1));
+
+    // Book is empty
+    EXPECT_EQ(book.getBestBid(), std::nullopt);
+}
+
+TEST(Cancel, CancelRestingSellOrder) {
+    OrderBook book;
+
+    book.addOrder(makeOrder(1, Side::Sell, 100, 50));
+    EXPECT_EQ(book.getBestAsk(), 100);
+
+    EXPECT_TRUE(book.cancelOrder(1));
+    EXPECT_EQ(book.getBestAsk(), std::nullopt);
+}
+
+TEST(Cancel, CancelNonexistentOrder_ReturnsFalse) {
+    OrderBook book;
+
+    // Nothing on the book — cancel should fail
+    EXPECT_FALSE(book.cancelOrder(999));
+}
+
+TEST(Cancel, CancelAlreadyCancelledOrder_ReturnsFalse) {
+    OrderBook book;
+
+    book.addOrder(makeOrder(1, Side::Buy, 100, 50));
+    EXPECT_TRUE(book.cancelOrder(1));
+
+    // Second cancel should fail
+    EXPECT_FALSE(book.cancelOrder(1));
+}
+
+TEST(Cancel, CancelFullyFilledOrder_ReturnsFalse) {
+    OrderBook book;
+
+    // Sell rests, then buy fills it completely
+    book.addOrder(makeOrder(1, Side::Sell, 100, 50));
+    book.addOrder(makeOrder(2, Side::Buy, 100, 50));
+
+    // Order 1 was fully filled — no longer in lookup
+    EXPECT_FALSE(book.cancelOrder(1));
+}
+
+TEST(Cancel, CancelOneOfMultipleAtSameLevel) {
+    OrderBook book;
+
+    // Three orders at the same price
+    book.addOrder(makeOrder(1, Side::Sell, 100, 30));
+    book.addOrder(makeOrder(2, Side::Sell, 100, 40));
+    book.addOrder(makeOrder(3, Side::Sell, 100, 50));
+
+    // Cancel the middle one
+    EXPECT_TRUE(book.cancelOrder(2));
+
+    // Level still exists with orders 1 and 3
+    EXPECT_EQ(book.getBestAsk(), 100);
+    auto snap = book.getSnapshot();
+    ASSERT_EQ(snap.asks.size(), 1);
+    EXPECT_EQ(snap.asks[0].total_quantity, 80);  // 30 + 50
+    EXPECT_EQ(snap.asks[0].order_count, 2);
+}
+
+TEST(Cancel, CancelThenMatch_NoStaleReferences) {
+    OrderBook book;
+
+    // Two sells at same price
+    book.addOrder(makeOrder(1, Side::Sell, 100, 30));
+    book.addOrder(makeOrder(2, Side::Sell, 100, 40));
+
+    // Cancel the first one
+    book.cancelOrder(1);
+
+    // Buy should match against order 2, not the cancelled order 1
+    auto trades = book.addOrder(makeOrder(3, Side::Buy, 100, 40));
+    ASSERT_EQ(trades.size(), 1);
+    EXPECT_EQ(trades[0].sell_order_id, 2);
+    EXPECT_EQ(trades[0].quantity, 40);
+
+    EXPECT_EQ(book.getBestAsk(), std::nullopt);
+}

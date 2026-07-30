@@ -2,6 +2,8 @@
 #pragma once 
 #include <map>
 #include <optional>
+#include <unordered_map>
+#include <list>
 #include <vector>
 #include "order_engine/core/price_level.hpp"
 #include "order_engine/core/trade.hpp"
@@ -26,6 +28,9 @@ namespace order_engine {
         std::uint64_t next_sequence_{0}; // Starts at zero 
         std::uint64_t next_trade_id_{0};
 
+        // Maps each order ID to an iterator pointing to that order's location in the order list.
+        std::unordered_map<OrderId, std::list<Order>::iterator> order_lookup_;
+
         public:
         // Adds an order to the book. If it crosses the opposite side, matches are
         // executed and the resulting trades are returned.
@@ -40,6 +45,10 @@ namespace order_engine {
         // Returns a snapshot of the full book — aggregated qty and order count per level.
         BookSnapshot getSnapshot() const;
 
+        // Removes a resting order that hasn't been filled yet — a trader changes their mind and pulls the order out
+        bool cancelOrder(OrderId id);
+
+        
     };
 
 

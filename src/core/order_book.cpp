@@ -3,6 +3,8 @@
 // orderbook.cpp is where addOrder, cancelOrder, getBestBid, getBestAsk, snapshot
 #include "order_engine/core/order_book.hpp"
 #include "order_engine/core/order.hpp"
+#include <unordered_map>
+#include <list>
 
 namespace order_engine {
 
@@ -43,6 +45,7 @@ namespace order_engine {
 
                 // Clean up: remove filled resting order, then empty level
                 if (resting.remaining_quantity == 0) {
+                    order_lookup_.erase(resting.id);    
                     ask_map_.begin()->second.orders.pop_front();
                 } 
                 
@@ -82,6 +85,7 @@ namespace order_engine {
 
                 // Clean up: remove filled resting order, then empty level
                 if (resting.remaining_quantity == 0) {
+                    order_lookup_.erase(resting.id);                   // ← remove from lookup first
                     bid_map_.begin()->second.orders.pop_front();
                 } 
                 
@@ -96,8 +100,14 @@ namespace order_engine {
         if (order.remaining_quantity > 0 && order.type == OrderType::Limit) {
             if (order.side == Side::Buy) {
                 bid_map_[order.price].orders.push_back(order);
+                // Store the iterator -> at the price level -> orders list
+                auto new_order_it = std::prev(bid_map_[order.price].orders.end());
+                order_lookup_[order.id] = new_order_it;
             } else {
                 ask_map_[order.price].orders.push_back(order);
+                auto new_order_it = std::prev(ask_map_[order.price].orders.end());
+                order_lookup_[order.id] = new_order_it;
+            
             }
         }
 
@@ -149,7 +159,57 @@ namespace order_engine {
 
         return snapshot;
             
+
     }
+
+
+        // Cancel Order Implementation 
+        bool OrderBook::cancelOrder(OrderId id ) {
+            auto lookup_it = order_lookup_.find(id);
+
+            if (lookup_it == order_lookup_.end()) {
+                return false;
+            } 
+
+            Order& order = *(lookup_it->second);
+
+            if (order.side == Side::Buy) {
+                auto level_it = bid_map_.find(order.price);
+
+                if (level_it == bid_map_.end()) {
+                    return false;
+
+                }
+
+                level_it->second.orders.erase(lookup_it->second);
+
+                if (level_it->second.orders.empty()) {
+                    bid_map_.erase(level_it);
+                }
+
+            } else {
+
+                auto level_it = ask_map_.find(order.price);
+
+                if (level_it == ask_map_.end()) {
+                    return false;
+
+                }
+
+                level_it->second.orders.erase(lookup_it->second);
+
+                if (level_it->second.orders.empty()) {
+                    ask_map_.erase(level_it);
+                }
+
+
+            }
+
+            order_lookup_.erase(lookup_it);
+            return true;
+
+
+        }
 
     
 
