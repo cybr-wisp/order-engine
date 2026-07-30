@@ -39,3 +39,6 @@ add_executable(tests
 )
 target_link_libraries(tests PRIVATE engine GTest::gtest_main)
 add_test(NAME all_tests COMMAND tests)
+
+add_executable(bench_latency tests/unit/bench_latency.cpp)
+target_link_libraries(bench_latency engine)
