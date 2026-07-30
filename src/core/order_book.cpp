@@ -15,6 +15,15 @@ namespace order_engine {
         // Declare an empty vector to collect trades as we produce them 
         std::vector<Trade> trades;
 
+        // Reject invalid orders
+        if (order.remaining_quantity == 0) {
+            return trades;
+        }
+
+        if (order.type == OrderType::Limit && order.price <= 0) {
+            return trades;
+        }
+
         if (order.side == Side::Buy) {
 
             while (order.remaining_quantity > 0 && !ask_map_.empty() && (order.type == OrderType::Market || order.price >= ask_map_.begin()->first)) {

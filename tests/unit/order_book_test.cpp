@@ -507,3 +507,184 @@ TEST(TradeLog, LogMatchesReturnedTrades) {
     EXPECT_EQ(log[0].quantity, trades[0].quantity);
     EXPECT_EQ(log[0].price, trades[0].price);
 }
+
+// ========== Day 15: Edge cases and defensive validation ==========
+
+// --- Invalid input guards ---
+
+TEST(EdgeCase, ZeroQuantityOrder_Rejected) {
+    OrderBook book;
+    auto trades = book.addOrder(makeOrder(1, Side::Buy, 100, 0));
+    EXPECT_TRUE(trades.empty());
+    EXPECT_EQ(book.getBestBid(), std::nullopt);
+}
+
+TEST(EdgeCase, ZeroQuantitySell_Rejected) {
+    OrderBook book;
+    auto trades = book.addOrder(makeOrder(1, Side::Sell, 100, 0));
+    EXPECT_TRUE(trades.empty());
+    EXPECT_EQ(book.getBestAsk(), std::nullopt);
+}
+
+TEST(EdgeCase, NegativePriceLimitOrder_Rejected) {
+    OrderBook book;
+    auto trades = book.addOrder(makeOrder(1, Side::Buy, -50, 100));
+    EXPECT_TRUE(trades.empty());
+    EXPECT_EQ(book.getBestBid(), std::nullopt);
+}
+
+TEST(EdgeCase, ZeroPriceLimitOrder_Rejected) {
+    OrderBook book;
+    auto trades = book.addOrder(makeOrder(1, Side::Sell, 0, 100));
+    EXPECT_TRUE(trades.empty());
+    EXPECT_EQ(book.getBestAsk(), std::nullopt);
+}
+
+// --- Empty book operations ---
+
+TEST(EdgeCase, MatchOnEmptyBook_NoTrades) {
+    OrderBook book;
+    auto trades = book.addOrder(makeOrder(1, Side::Buy, 100, 50));
+    EXPECT_TRUE(trades.empty());
+    // Order should rest since it's a limit order
+    EXPECT_EQ(book.getBestBid(), 100);
+}
+
+TEST(EdgeCase, CancelOnEmptyBook_ReturnsFalse) {
+    OrderBook book;
+    EXPECT_FALSE(book.cancelOrder(1));
+}
+
+TEST(EdgeCase, SnapshotOnEmptyBook_EmptyVectors) {
+    OrderBook book;
+    auto snap = book.getSnapshot();
+    EXPECT_TRUE(snap.bids.empty());
+    EXPECT_TRUE(snap.asks.empty());
+}
+
+TEST(EdgeCase, TradeLogOnEmptyBook_Empty) {
+    OrderBook book;
+    EXPECT_TRUE(book.getTradeLog().empty());
+}
+
+// --- FIFO ordering ---
+
+TEST(EdgeCase, FIFO_SamePriceFillsOldestFirst) {
+    OrderBook book;
+
+    // Three sells at the same price — order 1 arrived first
+    book.addOrder(makeOrder(1, Side::Sell, 100, 30));
+    book.addOrder(makeOrder(2, Side::Sell, 100, 30));
+    book.addOrder(makeOrder(3, Side::Sell, 100, 30));
+
+    // Buy enough for one fill — should match order 1
+    auto trades = book.addOrder(makeOrder(4, Side::Buy, 100, 30));
+    ASSERT_EQ(trades.size(), 1);
+    EXPECT_EQ(trades[0].sell_order_id, 1);  // oldest first
+
+    // Next buy matches order 2
+    auto trades2 = book.addOrder(makeOrder(5, Side::Buy, 100, 30));
+    ASSERT_EQ(trades2.size(), 1);
+    EXPECT_EQ(trades2[0].sell_order_id, 2);
+}
+
+// --- Price priority ---
+
+TEST(EdgeCase, PricePriority_BestPriceMatchesFirst) {
+    OrderBook book;
+
+    // Sells at two prices
+    book.addOrder(makeOrder(1, Side::Sell, 101, 50));
+    book.addOrder(makeOrder(2, Side::Sell, 100, 50));  // cheaper, added second
+
+    // Buy should match the cheaper one first regardless of insertion order
+    auto trades = book.addOrder(makeOrder(3, Side::Buy, 101, 50));
+    ASSERT_EQ(trades.size(), 1);
+    EXPECT_EQ(trades[0].sell_order_id, 2);  // price 100 fills before 101
+    EXPECT_EQ(trades[0].price, 100);
+}
+
+// --- Duplicate IDs ---
+
+TEST(EdgeCase, DuplicateOrderIds_BothRest) {
+    OrderBook book;
+
+    // Two orders with the same ID at different prices — no crossing
+    book.addOrder(makeOrder(1, Side::Buy, 90, 50));
+    book.addOrder(makeOrder(1, Side::Buy, 95, 50));
+
+    // Both are on the book (engine doesn't enforce unique IDs currently)
+    auto snap = book.getSnapshot();
+    EXPECT_EQ(snap.bids.size(), 2);
+}
+
+// --- Cancel edge cases ---
+
+TEST(EdgeCase, CancelMiddleOrder_PreservesFIFO) {
+    OrderBook book;
+
+    book.addOrder(makeOrder(1, Side::Sell, 100, 30));
+    book.addOrder(makeOrder(2, Side::Sell, 100, 30));
+    book.addOrder(makeOrder(3, Side::Sell, 100, 30));
+
+    // Cancel order 2
+    EXPECT_TRUE(book.cancelOrder(2));
+
+    // Buy matches order 1 first (FIFO preserved after cancel)
+    auto trades = book.addOrder(makeOrder(4, Side::Buy, 100, 30));
+    ASSERT_EQ(trades.size(), 1);
+    EXPECT_EQ(trades[0].sell_order_id, 1);
+
+    // Next matches order 3 (order 2 was removed)
+    auto trades2 = book.addOrder(makeOrder(5, Side::Buy, 100, 30));
+    ASSERT_EQ(trades2.size(), 1);
+    EXPECT_EQ(trades2[0].sell_order_id, 3);
+}
+
+// --- Market order edge cases ---
+
+TEST(EdgeCase, MarketBuyOnEmptyAskSide_NoTradeNoRest) {
+    OrderBook book;
+
+    // Bids exist but no asks
+    book.addOrder(makeOrder(1, Side::Buy, 100, 50));
+    auto trades = book.addOrder(makeMarketOrder(2, Side::Buy, 100));
+
+    EXPECT_TRUE(trades.empty());
+    // Market order should NOT rest
+    auto snap = book.getSnapshot();
+    EXPECT_EQ(snap.bids.size(), 1);  // only the original limit order
+}
+
+TEST(EdgeCase, MarketSellOnEmptyBidSide_NoTradeNoRest) {
+    OrderBook book;
+
+    // Asks exist but no bids
+    book.addOrder(makeOrder(1, Side::Sell, 100, 50));
+    auto trades = book.addOrder(makeMarketOrder(2, Side::Sell, 100));
+
+    EXPECT_TRUE(trades.empty());
+    auto snap = book.getSnapshot();
+    EXPECT_EQ(snap.asks.size(), 1);  // only the original limit order
+}
+
+// --- Aggressive limit crosses multiple levels ---
+
+TEST(EdgeCase, AggressiveLimitBuy_CrossesMultipleLevelsStopsAtPriceLimit) {
+    OrderBook book;
+
+    book.addOrder(makeOrder(1, Side::Sell, 100, 30));
+    book.addOrder(makeOrder(2, Side::Sell, 101, 30));
+    book.addOrder(makeOrder(3, Side::Sell, 105, 30));
+
+    // Buy willing to pay up to 101 — should NOT touch the 105 level
+    auto trades = book.addOrder(makeOrder(4, Side::Buy, 101, 100));
+
+    ASSERT_EQ(trades.size(), 2);
+    EXPECT_EQ(trades[0].price, 100);
+    EXPECT_EQ(trades[1].price, 101);
+
+    // 40 remaining rests as a bid at 101
+    EXPECT_EQ(book.getBestBid(), 101);
+    EXPECT_EQ(book.getBestAsk(), 105);  // untouched
+}
